@@ -5,29 +5,27 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "MISSING_TOKEN", message: "Please set GITHUB_TOKEN in Vercel settings" });
   }
 
-  // --- 1. Original GitHub-Readme-Stats Logic Constants ---
-  // මේවා තමයි Official Repo එකේ පාවිච්චි කරන "Mean Values" (සාමාන්‍ය අගයන්)
-  const COMMITS_MEDIAN = 1000;
+  // --- The REAL Constants (From github-readme-stats source) ---
+  // මේවා තමයි ලෝක සම්මත Median අගයන් (මේවාට වඩා වැඩි නම් තමයි ලකුණු හම්බෙන්නේ)
+  const COMMITS_MEDIAN = 250;  // Yearly commits (Average dev does ~250)
   const COMMITS_WEIGHT = 2;
   
-  const PRS_MEDIAN = 50;
+  const PRS_MEDIAN = 50;       // Yearly PRs
   const PRS_WEIGHT = 3;
   
-  const ISSUES_MEDIAN = 25;
+  const ISSUES_MEDIAN = 25;    // Yearly Issues
   const ISSUES_WEIGHT = 1;
   
-  const STARS_MEDIAN = 50;
+  const STARS_MEDIAN = 50;     // Total Stars earned
   const STARS_WEIGHT = 4;
   
-  const FOLLOWERS_MEDIAN = 10;
+  const FOLLOWERS_MEDIAN = 10; // Total Followers
   const FOLLOWERS_WEIGHT = 1;
 
-  // Reviews ගණන් ගන්නේ නැති වුනොත් අවුලක් නෑ (API එකෙන් සමහර විට එන්නේ නෑ)
-  const TOTAL_WEIGHT = COMMITS_WEIGHT + PRS_WEIGHT + ISSUES_WEIGHT + STARS_WEIGHT + FOLLOWERS_WEIGHT;
-
-  // --- Helper: Exponential CDF Function ---
-  // මේකෙන් තමයි ලකුණු 0-100 අතරට හදන්නේ (Diminishing Returns)
-  // උදාහරණ: Commits 1000 ක් තියෙන කෙනාට 50% ක් හම්බෙනවා. 5000ක් තිබ්බත් 100% වෙන්නේ නෑ.
+  // --- Exponential CDF Function ---
+  // මෙය තමයි ඇත්තම Logic එක (Diminishing Returns)
+  // Commits 250 ක් ගැහුවම 50% ක් ලැබෙනවා. 500ක් ගැහුවම 75% යි. 
+  // 100% ගන්න නම් මැරෙන්නම ඕනේ.
   const calculateScore = (value, median) => {
     return 1 - Math.pow(0.5, value / median);
   };
@@ -86,10 +84,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GITHUB_API_ERROR", details: data.errors });
     }
 
-    if (!data.data || !data.data.viewer) {
-      return res.status(500).json({ error: "NO_DATA", message: "User data not found" });
-    }
-
     const viewer = data.data.viewer;
     const contribs = viewer.contributionsCollection;
     const repos = viewer.repositories.nodes;
@@ -122,16 +116,17 @@ export default async function handler(req, res) {
     const totalCollabs = viewer.collaborations ? viewer.collaborations.totalCount : 0;
     const followers = viewer.followers.totalCount;
 
-    // --- 2. Real Rank Calculation (The Hard Mode) ---
+    // --- REAL RANK CALCULATION ---
     
-    // Calculate individual scores (0 to 1)
+    // 1. Calculate Score for each metric (0 to 1)
     const commitScore = calculateScore(totalCommits, COMMITS_MEDIAN);
     const prScore = calculateScore(totalPRs, PRS_MEDIAN);
     const issueScore = calculateScore(totalIssues, ISSUES_MEDIAN);
     const starScore = calculateScore(totalStars, STARS_MEDIAN);
     const followerScore = calculateScore(followers, FOLLOWERS_MEDIAN);
 
-    // Calculate Weighted Average
+    // 2. Weighted Average
+    const totalWeight = COMMITS_WEIGHT + PRS_WEIGHT + ISSUES_WEIGHT + STARS_WEIGHT + FOLLOWERS_WEIGHT;
     const weightedSum = 
       (commitScore * COMMITS_WEIGHT) +
       (prScore * PRS_WEIGHT) +
@@ -139,28 +134,38 @@ export default async function handler(req, res) {
       (starScore * STARS_WEIGHT) +
       (followerScore * FOLLOWERS_WEIGHT);
 
-    const totalScore = (weightedSum / TOTAL_WEIGHT) * 100;
+    // 3. Final Percentile (0 to 100)
+    const percentile = (weightedSum / totalWeight) * 100;
 
-    // Determine Rank based on Percentile
+    // 4. Determine Rank (Based on Top %)
+    // S  = Top 1%   (Percentile >= 99) - ගොඩක් අමාරුයි
+    // A+ = Top 12.5% (Percentile >= 87.5)
+    // A  = Top 25%  (Percentile >= 75)
+    // A- = Top 37.5% (Percentile >= 62.5)
+    // B+ = Top 50%  (Percentile >= 50)
     let rank = 'C';
-    if (totalScore >= 95) rank = 'S+'; // Top 5%
-    else if (totalScore >= 85) rank = 'S'; // Top 15%
-    else if (totalScore >= 65) rank = 'A+'; // Top 35%
-    else if (totalScore >= 45) rank = 'A'; // Top 55%
-    else if (totalScore >= 30) rank = 'A-';
-    else if (totalScore >= 15) rank = 'B+';
-    else if (totalScore >= 5) rank = 'B';
+    if (percentile >= 99) rank = 'S';
+    else if (percentile >= 87.5) rank = 'A+';
+    else if (percentile >= 75) rank = 'A';
+    else if (percentile >= 62.5) rank = 'A-';
+    else if (percentile >= 50) rank = 'B+';
+    else if (percentile >= 37.5) rank = 'B';
+    else if (percentile >= 25) rank = 'B-';
     
-    // --- Language Percentages ---
+    // --- UI Generation ---
     const langsArray = Object.keys(languageStats).map(name => {
       const percentage = totalSize > 0 ? ((languageStats[name].size / totalSize) * 100).toFixed(1) : 0;
       return { name, percentage, color: languageStats[name].color };
     }).sort((a, b) => b.percentage - a.percentage).slice(0, 5);
 
-    // --- SVG Generation (Same Modern Design) ---
     const width = 450;
     const height = 195;
     const displayName = viewer.name || viewer.login;
+
+    // Circle Progress Calculation
+    // We want the circle to show the percentile (How good you are)
+    const circumference = 220; 
+    const strokeDashoffset = circumference - (percentile / 100) * circumference;
 
     const css = `
       <style>
@@ -168,16 +173,12 @@ export default async function handler(req, res) {
         .header { font-weight: 700; font-size: 18px; fill: #58a6ff; }
         .stat-label { font-size: 12px; fill: #8b949e; font-weight: 500; }
         .stat-value { font-weight: 700; font-size: 14px; fill: #e6edf3; }
-        .rank-text { font-weight: 800; font-size: 38px; fill: #f0e130; text-anchor: middle; filter: drop-shadow(0px 0px 2px rgba(240, 225, 48, 0.5)); }
+        .rank-text { font-weight: 800; font-size: 38px; fill: #f0e130; text-anchor: middle; filter: drop-shadow(0px 0px 4px rgba(240, 225, 48, 0.4)); }
         .rank-label { font-weight: 700; font-size: 10px; fill: #8b949e; letter-spacing: 1.5px; text-anchor: middle; }
         .lang-text { font-size: 10px; fill: #8b949e; font-weight: 500; }
         .card-bg { fill: #0d1117; stroke: #30363d; stroke-width: 1; }
       </style>
     `;
-
-    // Progress circle calculation (based on score)
-    const circumference = 220; // 2 * pi * 35 approx
-    const strokeDashoffset = circumference - (totalScore / 100) * circumference;
 
     let svgContent = `
       <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -198,13 +199,12 @@ export default async function handler(req, res) {
              <text x="0" y="0" class="stat-label">⭐ Total Stars</text>
              <text x="90" y="0" class="stat-value">${totalStars}</text>
              
-             <text x="0" y="22" class="stat-label">🔄 Commits</text>
+             <text x="0" y="22" class="stat-label">🔄 Commits (1y)</text>
              <text x="90" y="22" class="stat-value">${totalCommits}</text>
              
              <text x="0" y="44" class="stat-label">🔀 PRs</text>
              <text x="90" y="44" class="stat-value">${totalPRs}</text>
            </g>
-           
            <g transform="translate(150, 0)">
              <text x="0" y="0" class="stat-label">📦 Repos</text>
              <text x="80" y="0" class="stat-value">${totalRepos}</text>
