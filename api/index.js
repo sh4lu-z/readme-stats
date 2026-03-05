@@ -27,7 +27,7 @@ export default async function handler(req, res) {
             forkCount
             isPrivate
             isFork
-            languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+            languages(first: 20, orderBy: {field: SIZE, direction: DESC}) {
               edges {
                 size
                 node {
@@ -104,26 +104,29 @@ export default async function handler(req, res) {
     const totalRepos = viewer.repositories.totalCount;
     const totalCollabs = viewer.collaborations ? viewer.collaborations.totalCount : 0;
 
-    // --- Language Sorting (Top 10) ---
-    const langsArray = Object.keys(languageStats).map(name => {
+    // --- Language Sorting ---
+    const allLangs = Object.keys(languageStats).map(name => {
       const percentage = totalSize > 0 ? ((languageStats[name].size / totalSize) * 100).toFixed(1) : 0;
       return { name, percentage, color: languageStats[name].color };
-    }).sort((a, b) => b.percentage - a.percentage).slice(0, 10);
+    }).sort((a, b) => b.percentage - a.percentage);
 
-    // --- SVG Design Adjustments ---
+    // Top 12 Languages for Display
+    const topLangs = allLangs.slice(0, 12);
+    // Count remaining languages
+    const extraLangsCount = Math.max(0, allLangs.length - 12);
+
+    // --- SVG Layout Calculations ---
+    const columns = 3;
+    const colWidth = 140;
+    const rowHeight = 25;
     
-    // 1. Layout Settings
-    const columns = 3;  // කලින් 5 තිබ්බේ, දැන් 3 යි. (දිග නම් වලට ඉඩ හම්බෙනවා)
-    const colWidth = 140; // එක නමකට 140px ඉඩක් දුන්නා.
-    const rowHeight = 25; // පේලි අතර පරතරය චුට්ටක් වැඩි කළා.
-    
-    // 2. Dynamic Height Calculation
-    // Header + Stats (190px) + Legend Rows needed
-    const rowsNeeded = Math.ceil(langsArray.length / columns);
+    // Calculate required height based on rows
+    const rowsNeeded = Math.ceil(topLangs.length / columns);
     const legendHeight = rowsNeeded * rowHeight;
-    const width = 450;
-    const height = 190 + legendHeight + 20; // Auto adjust height based on rows
+    const footerHeight = extraLangsCount > 0 ? 25 : 0; // Extra space for "...and X more" text
 
+    const width = 450;
+    const height = 180 + legendHeight + footerHeight; 
     const displayName = viewer.name || viewer.login;
 
     const css = `
@@ -134,6 +137,7 @@ export default async function handler(req, res) {
         .stat-value { font-weight: 700; font-size: 14px; fill: #e6edf3; }
         .small-text { font-size: 10px; fill: #8b949e; }
         .lang-text { font-size: 11px; fill: #8b949e; font-weight: 500; }
+        .footer-text { font-size: 10px; fill: #8b949e; font-style: italic; }
         .card-bg { fill: #0d1117; stroke: #30363d; stroke-width: 1; }
       </style>
     `;
@@ -178,9 +182,9 @@ export default async function handler(req, res) {
             <g clip-path="url(#bar-clip)">
     `;
 
-    // Draw Progress Bars
+    // Draw Progress Bars (Use Top 12 to fill the bar mostly)
     let xOffset = 0;
-    langsArray.forEach(lang => {
+    topLangs.forEach(lang => {
         const barWidth = (parseFloat(lang.percentage) / 100) * 400;
         if (barWidth > 0) {
             svgContent += `<rect x="${xOffset}" y="0" width="${barWidth}" height="8" fill="${lang.color || '#ccc'}"/>`;
@@ -195,8 +199,8 @@ export default async function handler(req, res) {
         <g transform="translate(25, 190)">
     `;
 
-    langsArray.forEach((lang, index) => {
-        // Calculate Grid Position (3 Columns)
+    // Render Grid
+    topLangs.forEach((lang, index) => {
         const colIndex = index % columns;
         const rowIndex = Math.floor(index / columns);
         
@@ -209,7 +213,17 @@ export default async function handler(req, res) {
         `;
     });
 
-    svgContent += `</g></svg>`;
+    svgContent += `</g>`;
+
+    // --- Footer Text (If more languages exist) ---
+    if (extraLangsCount > 0) {
+        const footerY = 190 + legendHeight + 5;
+        svgContent += `
+          <text x="25" y="${footerY}" class="footer-text">...and ${extraLangsCount} more languages</text>
+        `;
+    }
+
+    svgContent += `</svg>`;
 
     res.setHeader('Content-Type', 'image/svg+xml');
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
