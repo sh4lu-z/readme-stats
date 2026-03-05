@@ -22,7 +22,7 @@ export default async function handler(req, res) {
         repositories(first: 100, ownerAffiliations: OWNER, isFork: false) {
           totalCount
           nodes {
-            stargazersCount
+            stargazerCount  
             forkCount
             languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
               edges {
@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     let totalSize = 0;
 
     repos.forEach(repo => {
-      totalStars += repo.stargazersCount;
+      totalStars += repo.stargazerCount; // Corrected Field Name
       totalForks += repo.forkCount;
       if (repo.languages && repo.languages.edges) {
         repo.languages.edges.forEach(edge => {
@@ -114,57 +114,68 @@ export default async function handler(req, res) {
 
     // --- SVG Generation ---
     const width = 450;
-    const height = 240; 
+    const height = 195; // Adjusted height for compactness
     const displayName = viewer.name || viewer.login;
 
+    // --- Stylish CSS (Dark Theme + Neon Accents) ---
     const css = `
       <style>
-        .card { font-family: 'Segoe UI', Ubuntu, Sans-Serif; fill: #c9d1d9; }
-        .header { font-weight: 600; font-size: 18px; fill: #58a6ff; }
-        .stat-label { font-size: 14px; fill: #8b949e; }
-        .stat-value { font-weight: 600; font-size: 15px; fill: #ffffff; }
-        .rank-text { font-weight: 800; font-size: 40px; fill: #f0e130; text-anchor: middle; }
-        .rank-label { font-weight: 600; font-size: 12px; fill: #8b949e; letter-spacing: 2px; text-anchor: middle; }
-        .lang-text { font-size: 11px; fill: #8b949e; }
+        .container { font-family: 'Segoe UI', Ubuntu, Sans-Serif; fill: #c9d1d9; }
+        .header { font-weight: 700; font-size: 18px; fill: #58a6ff; }
+        .stat-label { font-size: 12px; fill: #8b949e; font-weight: 500; }
+        .stat-value { font-weight: 700; font-size: 14px; fill: #e6edf3; }
+        .rank-text { font-weight: 800; font-size: 38px; fill: #f0e130; text-anchor: middle; filter: drop-shadow(0px 0px 2px rgba(240, 225, 48, 0.5)); }
+        .rank-label { font-weight: 700; font-size: 10px; fill: #8b949e; letter-spacing: 1.5px; text-anchor: middle; }
+        .lang-text { font-size: 10px; fill: #8b949e; font-weight: 500; }
+        .card-bg { fill: #0d1117; stroke: #30363d; stroke-width: 1; }
       </style>
     `;
 
     let svgContent = `
       <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
         ${css}
-        <rect x="0.5" y="0.5" width="${width-1}" height="${height-1}" rx="10" ry="10" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+        <rect x="0.5" y="0.5" width="${width-1}" height="${height-1}" rx="10" ry="10" class="card-bg"/>
 
-        <text x="25" y="35" class="header">${displayName}'s GitHub Stats</text>
+        <text x="25" y="30" class="header">${displayName}'s GitHub Stats</text>
 
-        <g transform="translate(360, 70)">
-          <circle cx="0" cy="0" r="38" fill="none" stroke="#30363d" stroke-width="4"/>
-          <circle cx="0" cy="0" r="38" fill="none" stroke="#58a6ff" stroke-width="4" stroke-dasharray="240" stroke-dashoffset="${240 - (Math.min(score, 5000)/5000)*240}" transform="rotate(-90)"/>
-          <text x="0" y="15" class="rank-text">${rank}</text>
-          <text x="0" y="55" class="rank-label">RANK</text>
+        <g transform="translate(360, 65)">
+          <circle cx="0" cy="0" r="35" fill="none" stroke="#21262d" stroke-width="5"/>
+          <circle cx="0" cy="0" r="35" fill="none" stroke="#58a6ff" stroke-width="5" stroke-dasharray="220" stroke-dashoffset="${220 - (Math.min(score, 5000)/5000)*220}" transform="rotate(-90)" stroke-linecap="round"/>
+          <text x="0" y="12" class="rank-text">${rank}</text>
+          <text x="0" y="48" class="rank-label">RANK</text>
         </g>
 
-        <g transform="translate(25, 65)">
+        <g transform="translate(25, 60)">
            <g>
              <text x="0" y="0" class="stat-label">⭐ Total Stars</text>
-             <text x="110" y="0" class="stat-value">${totalStars}</text>
-             <text x="0" y="25" class="stat-label">🔄 Commits</text>
-             <text x="110" y="25" class="stat-value">${totalCommits}</text>
-             <text x="0" y="50" class="stat-label">🔀 PRs</text>
-             <text x="110" y="50" class="stat-value">${totalPRs}</text>
+             <text x="90" y="0" class="stat-value">${totalStars}</text>
+             
+             <text x="0" y="22" class="stat-label">🔄 Commits</text>
+             <text x="90" y="22" class="stat-value">${totalCommits}</text>
+             
+             <text x="0" y="44" class="stat-label">🔀 PRs</text>
+             <text x="90" y="44" class="stat-value">${totalPRs}</text>
            </g>
-           <g transform="translate(160, 0)">
+           
+           <g transform="translate(150, 0)">
              <text x="0" y="0" class="stat-label">📦 Repos</text>
-             <text x="100" y="0" class="stat-value">${totalRepos}</text>
-             <text x="0" y="25" class="stat-label">🐛 Issues</text>
-             <text x="100" y="25" class="stat-value">${totalIssues}</text>
-             <text x="0" y="50" class="stat-label">👥 Contribs</text>
-             <text x="100" y="50" class="stat-value">${totalCollabs}</text>
+             <text x="80" y="0" class="stat-value">${totalRepos}</text>
+             
+             <text x="0" y="22" class="stat-label">🐛 Issues</text>
+             <text x="80" y="22" class="stat-value">${totalIssues}</text>
+             
+             <text x="0" y="44" class="stat-label">👥 Contribs</text>
+             <text x="80" y="44" class="stat-value">${totalCollabs}</text>
            </g>
         </g>
 
-        <line x1="25" y1="155" x2="425" y2="155" stroke="#30363d" stroke-width="1"/>
+        <line x1="25" y1="130" x2="425" y2="130" stroke="#21262d" stroke-width="1"/>
 
-        <g transform="translate(25, 180)">
+        <g transform="translate(25, 145)">
+            <clipPath id="bar-clip">
+                <rect x="0" y="0" width="400" height="8" rx="4"/>
+            </clipPath>
+            <g clip-path="url(#bar-clip)">
     `;
 
     // Draw Progress Bars
@@ -177,9 +188,14 @@ export default async function handler(req, res) {
         }
     });
 
-    svgContent += `</g> <g transform="translate(25, 210)">`;
+    svgContent += `
+            </g>
+        </g>
+        
+        <g transform="translate(25, 170)">
+    `;
 
-    // Draw Legend
+    // Draw Legend with Colors
     let legendX = 0;
     langsArray.forEach(lang => {
         svgContent += `
